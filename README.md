@@ -4,7 +4,7 @@ ISPF user upon request, or optionally can be integrated into ISR@PRIM
 so that is presents new news items overtly. It can also be enabled, by
 the user, to perform a check once each day when ISPF starts.
 
-## Installation:
+## Installation
 
   - execute the $RECEIVE exec to expand the EXEC, MSGS, PANELS, and
     SKELS members into partitioned datasets
@@ -19,11 +19,11 @@ the user, to perform a check once each day when ISPF starts.
     libraries
   - Allocate the two news libraries for the default news
   - Allocate the two news libraries for the test news
-  - experiment using tso %inews test admin and tso %inews test
+  - experiment using `tso %inews test admin` and `tso %inews test`
     - this works with the test libraries until you are comfortable
       and are ready to move to the default (production) libraries
   - run the ADMIN dialog to generate some news items
-    - tso %inews admin
+    - `tso %inews admin`
 
 The user will have an option when the news is displayed, via the CHECK
 command, to enable automatic, once per day, checking for new and unread
@@ -44,19 +44,20 @@ table.
 
 The administrative options are documented on the table display panel.
 
-Note: Use option C (clone) to make a copy of an existing news item to
+*Note:* Use option C (clone) to make a copy of an existing news item to
       make updates to it. This gives the item a new number and thus it
       will appear with a status of New for users that automatically
       check for New and Unread items at ISPF startup. The old item
       remains or can be deleted using option D.
 
-Detour: The dialog maintains a small ISPF table with one row in the
+### Detour
+The dialog maintains a small ISPF table with one row in the
 users ISPF Profile dataset.  This table contains a flag for each news
 item indicating the users status in relation to the item. Thus if a news
 item has been marked read then the user will not see any UPDATES to that
 news item unless they explicitly view it.
 
-Note that the ADMIN updates are made to a working copy of the table
+*Note* that the ADMIN updates are made to a working copy of the table
 dataset and at SAVE time all updates are copied into production.
 
 ## User Interface
@@ -73,22 +74,22 @@ Command Options:  Find xxx    Search xxx   Refresh  XAll (mark all ignored)
 Line Options:     S -Select   U -Unread   X -Ignore   P -Print
 ```
 
-Find   will find the specified character string in the displayed title
-       text.
+    Find   will find the specified character string in the displayed title
+           text.
 
-Refresh will rebuild the news table and is designed for use after
-        a Search
+    Refresh will rebuild the news table and is designed for use after
+            a Search
 
-Search will look for the specified word/string in all members and display
-       only those members which have that word.  This search is done
-       using ISPF SuperC (search-for).
+    Search will look for the specified word/string in all members and display
+           only those members which have that word.  This search is done
+           using ISPF SuperC (search-for).
 
-XALL   will mark all new and unread News items as Ignored.
+    XALL   will mark all new and unread News items as Ignored.
 
-S      Select the current news item to browse
-U      Mark the current news item unread
-X      Mark the current news item ignored
-P      Print the current news item
+    S      Select the current news item to browse
+    U      Mark the current news item unread
+    X      Mark the current news item ignored
+    P      Print the current news item
 
 ## Usage:
 
