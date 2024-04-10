@@ -1,0 +1,15 @@
+)CM  File Tailoring Skeleton for the RNEWS application used for option TEST
+)CM  Called by Rexx procedure INEWS
+)CM
+)CM  Written by Lionel Dyck
+)CM
+)TB  65
+                Test Systems News and Information
+)BLANK 2
+Item:    &ITEM
+Subject: &SUBJECT
+)BLANK 1
+Item Date:       &DATE
+Expiration Date: &EXPDATE
+)BLANK 2
+)IM  &MEMBER NT

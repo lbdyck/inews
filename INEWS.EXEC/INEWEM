@@ -1,0 +1,95 @@
+/* --------------------  rexx procedure  -------------------- *
+ * Name:      INEWEM                                          *
+ *                                                            *
+ * Function:  ISPF Edit Macro used by the INEWS application   *
+ *            to configure the ISPF Edit environment to enter *
+ *            the news item.                                  *
+ *                                                            *
+ *            If called with the C option then copy all       *
+ *            records to the clipboard.                       *
+ *                                                            *
+ *            If called with the P option then paste all      *
+ *            records into the member.                        *
+ *                                                            *
+ *            If called with the U option then setup for      *
+ *            editing the news item.                          *
+ *                                                            *
+ * Syntax:    called internally                               *
+ *                                                            *
+ * Author:    Lionel B. Dyck                                  *
+ *                                                            *
+ * History:                                                   *
+ *            02/15/17 - Clean up the paste to delete first   *
+ *            02/13/17 - Add option for copy, paste and update*
+ *            01/22/91 - Creation                             *
+ *                                                            *
+ * ---------------------------------------------------------- */
+
+ Address ISREDIT
+
+/* ---------------------- *
+ | Get the passed options |
+ * ---------------------- */
+ "MACRO (opt)"
+
+/* -------------------------------------------------------- *
+ | Process the desired option:                              |
+ |                                                          |
+ | null = setup the environment to enter a new news item.   |
+ | C    = Copy all records to the default clipboard         |
+ | P    = Paste all records into the new news item from the |
+ |        default clipboard                                 |
+ | U    = Setup edit defaults                               |
+ * -------------------------------------------------------- */
+ Select
+    When opt = '' then do
+         if length(subject) = 0 then do
+            "RESET"
+            "(BOT) = LINENUM .ZLAST"
+            if bot = 0 then "TENTER .ZF"
+            end
+         Call Edit_Set
+         End
+    When opt = 'C' then do
+         'Reset'
+         'Cut .zfirst .zlast'
+         'end'
+         End
+    When opt = 'P' then do
+         'Reset'
+         'x all'
+         'del x'
+         'Paste after .zfirst'
+         Call Edit_Set
+         End
+    When opt = 'U' then do
+         'Reset'
+         Call Edit_Set
+         End
+    Otherwise nop
+    End
+
+ Exit
+
+/* ---------------------------------------------------- *
+ | Setup the Edit environment for entering/updating the |
+ | new news item.                                       |
+ * ---------------------------------------------------- */
+ Edit_Set:
+  "RESET"
+  "PROFILE UNLOCK"
+  "RECOVERY ON"
+  "NUMBER OFF"
+  "CAPS OFF"
+  "NULL ON"
+  "AUTOLIST OFF"
+  "PACK OFF"
+  "HEX OFF"
+  "AUTOSAVE ON"
+  "AUTONUM OFF"
+  "BOUNDS = 1 80"
+  "DEFINE ineweme MACRO CMD"
+  "DEFINE inewemc MACRO CMD"
+  "DEFINE END ALIAS ineweme"
+  "DEFINE CANCEL ALIAS inewemc"
+  Exit

@@ -1,0 +1,17 @@
+        /*  Rexx ISPF Edit Macro                                       */
+
+        /* ----------------------------------------------------------- */
+        /*                                                             */
+        /*  This ISPF Edit Macro is used as an Alias for the ISPF EDIT */
+        /*  'CANCEL' command by the RISCNEWS exec.                     */
+        /*                                                             */
+        /* ----------------------------------------------------------- */
+        Address ISREDIT
+        "MACRO (PARM) NOPROCESS"
+
+        "DEFINE CANCEL RESET"  /* reset CANCEL back to normal */
+        "DEFINE END    RESET"  /* reset END    back to normal */
+
+        "END"
+        inewsend = "CANCEL"
+        Address ISPEXEC "VPUT (inewsend)"

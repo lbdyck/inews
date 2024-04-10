@@ -1,0 +1,87 @@
+/* --------------------  rexx procedure  -------------------- *
+ * Name:      inewsset                                        *
+ *                                                            *
+ * Function:  Called by %inews to add or remove the call      *
+ *            to %inewsck in the ISPF ZSTART profile variable.*
+ *                                                            *
+ *            Should be called for each ISPF Profile expected *
+ *            to be used at ispf startup (e.g. ISP and ISR)   *
+ *                                                            *
+ * Syntax:    %inewsset option                                *
+ *                                                            *
+ *            Option must be one of these:                    *
+ *                                                            *
+ *            Disable or D                                    *
+ *            Enable or E                                     *
+ *                                                            *
+ * Author:    Lionel B. Dyck                                  *
+ *                                                            *
+ * History:                                                   *
+ *            02/09/17 - Creation                             *
+ *                                                            *
+ * ---------------------------------------------------------- */
+ arg option
+
+/* ------------------------------------------------ *
+ | Define the ISPF addressing environment           |
+ | then get the current ISPF Applid and the current |
+ | ZSTART ISPF variable.                            |
+ |                                                  |
+ | - Set return code for the vget of ZSTART         |
+ * ------------------------------------------------ */
+ Address ISPExec
+ 'vget zapplid'
+ 'vget zstart'
+ vrc = rc
+
+/* ------------- *
+ | Check options |
+ * ------------- */
+ if option = 'E' then call enable
+ if option = 'D' then call disable
+
+/* ------------------------------------------------ *
+ | If an invalid option (not D or E) then exit with |
+ | informational message.                           |
+ * ------------------------------------------------ */
+ zedsmsg = 'Error'
+ zedlmsg = '%inewsset called with an invalid option. The valid' ,
+           'options are E to enable or D to disable the ZSTART' ,
+           'call to %inewsck.'
+ 'Setmsg msg(isrz001)'
+ exit
+
+/* -------------------------------------------------- *
+ | Enable the call to %inewsck in the ZSTART variable |
+ * -------------------------------------------------- */
+ Enable:
+ if vrc > 0 then do
+    zstart = 'ispf;tso %inewsck'
+    'vput (zstart) profile'
+    exit
+    end
+    else do
+         if pos("%inews",zstart) > 0 then exit
+         lp = pos(';',zstart)
+         lzs = left(zstart,lp)
+         rzs = substr(zstart,lp+1)
+         zstart = lzs'tso %inewsck;'rzs
+         'vput (zstart) profile'
+         exit
+         end
+
+/* -------------------------------------------------------- *
+ | Disable the call to %inewsck in the ISPF ZSTART variable |
+ | if it exists by removing it from the ZSTART variable.    |
+ * -------------------------------------------------------- */
+ Disable:
+ if vrc > 0 then exit
+ str = ';TSO %INEWSCK'
+ strl = length(str)
+ lp = pos(str,translate(zstart))
+ if lp = 0 then exit
+ lzs = left(zstart,lp-1)
+ rzs = substr(zstart,lp+strl)
+ zstart = lzs''rzs
+ 'vput (zstart) profile'
+ exit

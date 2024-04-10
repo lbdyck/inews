@@ -1,0 +1,27 @@
+)Attr Default(%+_)
+/* % type(text  ) intens(high)              Defaults displayed for */
+/* + type(text  ) intens(low )                   information only  */
+/* _ type( input) intens(high) caps(on ) just(left )               */
+   ! type( input) intens(high) caps(on ) just(left ) pad('_')
+   ^ type(output) intens(high) caps(off) just(left ) color(white)
+   | type(text) intens(low ) caps(off) just(asis ) color(white)
+   ` type(output) intens(high) caps(off) just(asis) color(white)
+)Body
++------------------%  News and Information Application   +--------------------
+%
+%
+%
+%                              Please be Patient
+%
+%
+%
+%                  The Search word index is being generated.
+%
+%  The current phase is:
+%
+%     `phase
+%
+%
+)Init
+)Proc
+)End

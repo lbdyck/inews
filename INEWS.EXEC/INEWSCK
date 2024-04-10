@@ -1,0 +1,30 @@
+        /* --------------------  rexx procedure  -------------------- *
+         * Name:      INEWSCK                                         *
+         *                                                            *
+         * Function:  Check for new news items                        *
+         *                                                            *
+         * Syntax:    %inewsck                                        *
+         *                                                            *
+         * Author:    Lionel B. Dyck                                  *
+         *                                                            *
+         * History:                                                   *
+         *            02/02/17 - Clean up addressing                  *
+         *            03/22/16 - name change and minor updates        *
+         *            03/27/00 - creation                             *
+         *                                                            *
+         * ---------------------------------------------------------- */
+
+        /* ------------------------------ *
+         * Only display news once per day *
+         * ------------------------------ */
+        Address ISPExec
+        "Vget (inewsck) Profile"
+        if inewsck = date('b') then exit
+        inewsck = date('b')
+        "Vput (inewsck) Profile"
+
+        /* ------------------ *
+         * Check for new news *
+         * ------------------ */
+         Address TSO
+        "%inews new"

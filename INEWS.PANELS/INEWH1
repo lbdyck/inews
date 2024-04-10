@@ -1,0 +1,33 @@
+)Attr Default(%+_)
+/* + type(text  ) intens(low )                   information only  */
+/* _ type( input) intens(high) caps(on ) just(left )               */
+   ! type(text) intens(high) caps(off) just(asis ) color(white)
+   ` type(text) intens(high) caps(off) just(asis ) color(blue)
+   ~ type(text) intens(high) caps(off) just(asis ) color(turq)
+   @ type(text) intens(high) caps(off) just(asis ) color(turq) hilite(uscore)
+   % type(text) intens(high)
+)Body
++----------------------% News and Information Tutorial +------------------------
+%Selection ===>_zcmd
+%
+~                            Table Command Options
+~
+~ @Option+   @Explanation+
+~
+`  Find      ~Seach the subject information for the specified character string.
+!             Ex.  Find abc
+`  Refresh   ~Refresh the display with all news items. For use after a Search.
+!             Ex.  RE
+`  Search    ~Seach the text of all news and information items for the
+~             specified character string (no wild cards).
+!             Ex.  Search abc
+`  XALL      ~Mark ALL new and unread News items as Ignored (use if Check On to
+~             hide items during the check for New and UnRead items).
+!             Ex.  XALL
+`  CHECK     ~Enable or Disable (On or Off) an automatic call to check
+~             for New and UnRead items at ISPF startup once per day
+!             Ex.  CHECK ON~or!CHECK OFF~ (blank = ON)
+~
+)Init
+)Proc
+)End

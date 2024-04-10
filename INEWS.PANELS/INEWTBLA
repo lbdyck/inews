@@ -1,0 +1,43 @@
+)Attr Default(%+_)
+/* _ type( input) intens(high) caps(on ) just(left )               */
+   @ type( input) intens(high) caps(on ) just(left ) pad('_') color(turq)
+   } type(output) INTENS(HIGH) HILITE(REVERSE) color(turq) just(asis)
+   ! type(output) intens(high) caps(off) just(asis ) color(turq)
+   ` type(text) intens(high) caps(off) just(asis ) color(blue)
+   ~ type(text) intens(high) caps(off) just(asis ) color(turq)
+   % type(text) intens(high)
+   ^ type(text) intens(high) caps(off) just(asis ) color(turq)
+   + type(text  ) intens(low )
+     skip(on)
+   # type(output) intens(high) caps(off) just(asis ) color(blue)
+)Body  WIDTH(80) EXPAND(//)
+}title                                           / /%
+%Command ===>_zcmd                                            %Scroll ===>_mamt+
+%
+`Command Options: %Find~xxx   %New        Save       Cancel
+`Line Options:    %S~-Select  %P~-Print  %D~-Delete %U~-Update %C~-Clone
++
++Sel Date       Item Subject
++
+)Model
+@z+ !z         #z   #z
+)Init
+  .Help  = INEWH0A
+  .ZVARS = '(ZSEL Date item Subject)'
+  &mamt = CSR
+  &zsel = &z
+)Proc
+ IF (&ZCMD = &Z)
+     if (&ztdsels = 0000)
+        &row = .csrrow
+        if (&row ^= &z)
+            if (&zsel = &z)
+                &zsel = S
+     if (&ztdsels ^= 0000)
+          &row = &z
+     IF (&ZSEL ^= &Z)
+        if (&Zsel = '=')
+           &Zsel = &osel
+     &osel = &zsel
+     ver (&zsel,list,S,P,D,U,C)
+)End

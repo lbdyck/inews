@@ -1,0 +1,57 @@
+)ATTR
+  ~ type(Input)  intens(high) caps(off) just(asis ) color(blue)
+  ` type(text) intens(high) caps(off) just(asis ) color(turq)
+  \ TYPE(INPUT) CAPS(OFF) INTENS(HIGH) COLOR(GREEN)
+  @ TYPE(INPUT) CAPS(ON) INTENS(HIGH) COLOR(WHITE)
+  _ TYPE(INPUT) CAPS(OFF) INTENS(HIGH)
+  | AREA(DYNAMIC) EXTEND(ON) SCROLL(ON) USERMOD(20)
+  ! TYPE(OUTPUT) INTENS(HIGH) PAD(-)
+  $ TYPE(OUTPUT) INTENS(HIGH)
+ 01 TYPE(DATAOUT) INTENS(LOW)
+ 02 TYPE(DATAOUT) INTENS(HIGH)
+ 03 TYPE(DATAOUT) SKIP(ON) /* FOR TEXT ENTER CMD. FIELD */
+ 04 TYPE(DATAIN)  INTENS(LOW)  CAPS(OFF)
+ 05 TYPE(DATAIN)  INTENS(HIGH) CAPS(OFF)
+ 06 TYPE(DATAIN)  INTENS(LOW)  CAPS(IN)
+ 07 TYPE(DATAIN)  INTENS(HIGH) CAPS(IN)
+ 08 TYPE(DATAIN)  INTENS(LOW)  FORMAT(DBCS)
+ 09 TYPE(DATAIN)  INTENS(LOW)  FORMAT(EBCDIC)
+ 0A TYPE(DATAIN)  INTENS(LOW)
+ 20 TYPE(DATAIN)  INTENS(LOW)  CAPS(IN)
+)BODY  EXPAND(//) WIDTH(&ZWIDTH)  CMD(ZCMD)
++----------------------/-/-%  News and Information  +--/-/----------------------
+%Command ===>_zcmd                                   / /      %Scroll ===>_Z   +
+                            / /
+`Item:    $ITEM                                                   / /
+`Subject: ~SUBJECT                                            +
+`Author:  ~Author
+`Date:    ~Date                                              `Expire:~Expdate
+|ZDATA ----------------------------------/-/-----------------------------------|
+|                                        / /                                   |
+| ---------------------------------------/-/-----------------------------------|
+ %&PFE+= Save Message   %CANCEL+to abort message
+ +
+)INIT
+
+  .HELP = ISR20000         /* DEFAULT TUTORIAL NAME     */
+  .ZVARS = 'ZSCED'                 /* SCROLL AMT VARIABLE NAME  */
+
+  &PFE = PFK(END)
+  IF (&PFE = &Z)  &PFE = 'END'
+  .CURSOR = ZCMD
+  &Expdate = &z
+
+)REINIT
+
+  REFRESH(ZCMD,ZDATA)
+  REFRESH(SUBJECT,AUTHOR,DATE)
+  .HELP = ISR20000         /* DEFAULT TUTORIAL NAME     */
+
+)PROC
+
+  &ZCURSOR = .CURSOR
+  &ZCSROFF = .CSRPOS
+  &ZLVLINE = LVLINE(ZDATA)
+
+  VPUT (AUTHOR) PROFILE
+)END

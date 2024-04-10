@@ -1,0 +1,60 @@
+)ATTR
+  ~ type(Input)  intens(high) caps(off) just(asis ) color(yellow)
+  ` type(text) intens(high) caps(off) just(asis ) color(turq)
+  \ TYPE(INPUT) CAPS(OFF) INTENS(HIGH) COLOR(GREEN)
+  @ TYPE(INPUT) CAPS(ON) INTENS(HIGH) COLOR(WHITE)
+  _ TYPE(INPUT) CAPS(OFF) INTENS(HIGH) FORMAT(&MIXED)
+  | AREA(DYNAMIC) EXTEND(ON) SCROLL(ON) USERMOD(20)
+  ! TYPE(OUTPUT) INTENS(HIGH) PAD(-)
+ 01 TYPE(DATAOUT) INTENS(LOW)
+ 02 TYPE(DATAOUT) INTENS(HIGH)
+ 03 TYPE(DATAOUT) SKIP(ON) /* FOR TEXT ENTER CMD. FIELD */
+ 04 TYPE(DATAIN)  INTENS(LOW)  CAPS(OFF)
+ 05 TYPE(DATAIN)  INTENS(HIGH) CAPS(OFF)
+ 06 TYPE(DATAIN)  INTENS(LOW)  CAPS(IN)
+ 07 TYPE(DATAIN)  INTENS(HIGH) CAPS(IN)
+ 08 TYPE(DATAIN)  INTENS(LOW)  FORMAT(DBCS)
+ 09 TYPE(DATAIN)  INTENS(LOW)  FORMAT(EBCDIC)
+ 0A TYPE(DATAIN)  INTENS(LOW)  FORMAT(&MIXED)
+ 20 TYPE(DATAIN)  INTENS(LOW)  CAPS(IN) FORMAT(&MIXED)
+)Body  WIDTH(80) EXPAND(//)
++----------------------/-/-%  News and Information  +--/-/----------------------
+%Command ===>_zcmd                                   / /      %Scroll ===>_Z   +
+                            / /
+`Subject: ~SUBJECT                                                / /
+`Author:  ~Author                                                 / /
+`Date:    ~Date                   / /                   ' '`Expire: ~Expdate
+|ZDATA ----------------------------------/-/-----------------------------------|
+|                                        / /                                   |
+| ---------------------------------------/-/-----------------------------------|
+ %&PFE+= Save Message   %CANCEL+to abort message
+ +
+)INIT
+
+  .HELP = ISR20000         /* DEFAULT TUTORIAL NAME     */
+  .ZVARS = 'ZSCED'                 /* SCROLL AMT VARIABLE NAME  */
+
+  &PFE = PFK(END)
+  IF (&PFE = &Z)  &PFE = 'END'
+  IF (&AUTHOR  = &Z)
+     .CURSOR = AUTHOR
+  IF (&AUTHOR ^= &Z)
+    .CURSOR = SUBJECT
+
+)REINIT
+
+  REFRESH(ZCMD,ZDATA)
+  REFRESH(SUBJECT,AUTHOR,DATE)
+  .HELP = ISR20000         /* DEFAULT TUTORIAL NAME     */
+
+)PROC
+
+  &ZCURSOR = .CURSOR
+  &ZCSROFF = .CSRPOS
+  &ZLVLINE = LVLINE(ZDATA)
+
+  VPUT (AUTHOR) PROFILE
+)END
+
+/*  DYNAMIC AREA SCREEN WIDTH FROM PQUERY. (80,132,160)
+/*  DYNAMIC AREA SCREEN DEPTH FROM PQUERY. (24,32,43,27,60)

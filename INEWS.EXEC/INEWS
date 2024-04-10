@@ -1,0 +1,1420 @@
+        /* ---------------------  rexx procedure  ---------------------- *
+         * Name:      INEWS                                              *
+         *                                                               *
+         * Function:  Present News and Information items for review      *
+         *            by an ISPF user in tabular fashion along with      *
+         *            providing an easy to use interface for adding      *
+         *            the new items to the table.                        *
+         *                                                               *
+         * Syntax:    %INEWS options.......                              *
+         *                                                               *
+         * options are positional with the 1st option being the name     *
+         *         of a news "site". If blank then the first site is     *
+         *         the default.                                          *
+         *                                                               *
+         * news site options are:                                        *
+         *                                                               *
+         *            NEWS     -  NEWS news table                        *
+         *                                                               *
+         *            TEST     -  Test news table                        *
+         *                                                               *
+         *            ....     -  others can be added to this exec       *
+         *                        using one of the above as a model.     *
+         *                                                               *
+         * optional options are:                                         *
+         *                                                               *
+         *            ADMIN    -  Perform administrative functions       *
+         *                        such as adding new items               *
+         *                        (see code below for internal list of   *
+         *                         authorized userids for this function) *
+         *            DEBUG    -  Place the exec in rexx trace           *
+         *            TEST     -  Use a test table data set              *
+         *                        (see test dsn below)                   *
+         *            NEW      -  Only display table if new items have   *
+         *                        been added since last display          *
+         *                        or unread items...................     *
+         *                        (default is to display all items)      *
+         *            FORCE    -  If the news data set is 'locked'       *
+         *                        this will over-ride the lock.          *
+         *                        (only useful for admin function)       *
+         *                                                               *
+         * Author:    Lionel B. Dyck                                     *
+         *                                                               *
+         * Dialog components:                                            *
+         *                                                               *
+         *        Panels:  defined by rexx variables below               *
+         *        Skels:   defined by rexx variables below               *
+         *        Msgs:    INEW00                                        *
+         *                                                               *
+         * History:                                                      *
+         *            02/15/17 Convert to use SUPERC to Search and       *
+         *                     eliminate the keyword build/index         *
+         *            02/13/17 Correction to support Admin and Force     *
+         *            02/09/17 Add new Command CHECK ON/OFF              *
+         *            02/06/17 Remove item from subject as panels        *
+         *                     updated to include it                     *
+         *                     Fixed test admin allocation               *
+         *            08/08/16 Add Refresh option                        *
+         *            05/31/16 Change XALL to mark all IGNORED           *
+         *                     - mark only unread and new ignored        *
+         *            05/27/16 Change XALL to mark all IGNORED           *
+         *            04/05/16 Allow wildcard at end of admin_user ids   *
+         *                     e.g. XY*                                  *
+         *            03/22/16 Add XALL command                          *
+         *                     Use symdef plex for dsname                *
+         *            03/21/16 Updated for NEWS                          *
+         *                     Removed obsolete mvs/bdt routine          *
+         *                     Removed center (node) checking            *
+         *            08/11/03 Add groups SDSMCSS COMTSOGP to the auth   *
+         *                     list of groups                            *
+         *            01/09/03 force author to null on new items         *
+         *            06/21/00 change ISPTABL to ISPPROF DD usage        *
+         *                     because of SCal ISPTABL usage             *
+         *            05/31/00 fix ISPTABL allocation                    *
+         *            03/30/99 change security to look for racf group    *
+         *            09/18/97 Remove KINFO/KFHP Add KPIT                *
+         *            04/28/95 Table title center/cleanup                *
+         *            04/24/95 Added Kaiser tables                       *
+         *            ....     removed intervening comments              *
+         *            10/28/92 to 11/02/92 Creation of this application  *
+         *                                                               *
+         * Notes:                                                        *
+         *                                                               *
+         * 1.  There are 2 'system' ISPF tables used by this application *
+         *     NEWS which contains information about each news item and  *
+         *     ITEMTBL that contains the last item number assigned.      *
+         * 2.  The news_id variable is suffixed with 'TBL' and a 1 row   *
+         *     ISPF table is created in the user's ISPPROF data set.     *
+         * 3.  Option NEW will check for NEW and Unread notices and if   *
+         *     there are any will enter the news application.            *
+         * 4.  The ADMIN function is controlled by the userids listed    *
+         *     in variable admin_users.                                  *
+         * 5.  Under ADMIN the NEWS and ITEMTBL tables are copied        *
+         *     into a work data set under the users index to reduce      *
+         *     the amount of time the table is locked.  A member in      *
+         *     the news data set called LOCK is created to insure        *
+         *     serialization in the update process.  This member is      *
+         *     then deleted upon successful completion of the update.    *
+         * 6.  All updates made under ADMIN are copied from the work     *
+         *     data set into the production data set.                    *
+         * 7.  Do NOT invoke under ISPF Applid of NEWS - that must be    *
+         *     done within this code.                                    *
+         * 8. For printing you need to change the print routine          *
+         *    for your sites print tool - find *print*                   *
+         * 9. The CHECK command will enable (ON) or disable (OFF) adding *
+         *    or removing a call to %inewsck in the ISPF ZSTART variable.*
+         * ------------------------------------------------------------- */
+
+        arg options
+
+        /* ------------------------------------------------------------- *
+         * Verify entry under NEWSF Applid                               *
+         * ------------------------------------------------------------- */
+        if "ACTIVE" <> sysvar('sysispf') then do
+           exit 0
+           end
+           else do
+           Address ISPEXEC
+           "VGET ZAPPLID"
+           if zapplid <> "NEWS" then do
+             "TBCreate newscmds names(zctverb zcttrunc zctact zctdesc)",
+               "replace share nowrite"
+             zctverb = "RFIND"
+             zcttrunc = 0
+             zctact = "&USRRFIND"
+             zctdesc = "RFIND for newsPath Dialog"
+             "TBAdd newscmds"
+             "Select CMD(%"sysvar('sysicmd') options ") Newappl(NEWS)" ,
+                 "Passlib"
+             "TBEnd newscmds"
+              exit 0
+           end
+        end
+
+        /* -------------------- *custom* ------------------------------- *
+         *                                                               *
+         * admin_dsn is a work data set used only during administration  *
+         * functions to reduce the time the news data set is 'locked'.   *
+         *                                                               *
+         * Note: this variable can be changed below for specific news    *
+         *       groups.                                                 *
+         * ------------------------------------------------------------- */
+        admin_dsn = sysvar(syspref)".WORKNEWS.TABLE"
+
+        /* -------------------- *custom* ------------------------------- *
+         * Customization variables that must be validated are:           *
+         *                                                               *
+         * panel          Normal user table display panel                *
+         * admin_panel    Table panel for administration functions       *
+         * browse_panel   Customized ISPF Browse panel                   *
+         * edit_panel     Customized ISPF Edit panel                     *
+         * ext_variable   Extension variable names (if any)              *
+         *                                                               *
+         * news_skeleton  ISPF File Tailoring skeleton                   *
+         *                                                               *
+         * admin_users    List of authorized administrators for news     *
+         *                application                                    *
+         *                                                               *
+         * title          Title of the application                       *
+         *                                                               *
+         * news_id        4 character news category                      *
+         * news_dsn       Data set name of the News PDS                  *
+         * admin_dsn      Data set name used by admin function to        *
+         *                prevent locking real data set/table. Then      *
+         *                copied into production data set/table.         *
+         *                                                               *
+         * default_news   Name of the default news "site"                *
+         *                                                               *
+         * Note: All dsn's are fully qualified without quotes in the     *
+         *       variables.                                              *
+         * ------------------------------------------------------------- */
+         restart:
+         default_news = "NEWS"
+
+         parse value '' with news_id news_dsn panel admin_panel,
+                               browse_panel edit_panel news_skeleton,
+                               admin_users ext_variable expdate,
+                               title null refresh
+
+        /* --------------------------------------------------- *
+         * Test options                                        *
+         *   1. if blank set to default news site              *
+         *   2. if more than one word then pass along          *
+         *   3. if one word then test for optional options and *
+         *      if found prefix options with default news site *
+         * --------------------------------------------------- */
+        if length(options) = 0 then options = default_news
+        if words(options) = 1 then do
+           if wordpos(options,"ADMIN DEBUG NEW TEST FORCE") > 0 then
+              options = default_news options
+           end
+        if words(options) > 1 then do i = 1 to words(options)
+           if wordpos(word(options,1),"ADMIN DEBUG NEW TEST FORCE") > 0 then
+              options = default_news options
+           end
+
+        if wordpos("DEBUG",options) > 0 then trace i
+        if wordpos("NEWS",options) > 0 then do
+                    admin_users   = "T311LBD T311NEL T311CAS"
+                    admin_dsn     = "EXCPRD.SYS.NEWS.ADMIN.TABLE"
+                    news_dsn      = "EXCPRD.SYS.NEWS.TABLE"
+                    panel         = "INEWTBL"
+                    admin_panel   = "INEWTBLA"
+                    browse_panel  = "INEWSBRO"
+                    edit_panel    = "INEWSEDT"
+                    news_skeleton = "INEWNEWS"
+                    ext_variable  = "EXPDATE"
+                    news_id       = "NEWS"
+                    title         = "IT News and Information"
+                    end
+        if wordpos("TEST",options) > 0 then do
+                    admin_users   = "T311LBD T311NEL T311CAS"
+                    news_dsn      = "EXCUTL.TEST.TESTNEWS.TABLE"
+                    admin_dsn     = "EXCUTL.TEST.ADMIN.TABLE"
+                    panel         = "INEWTBL"
+                    admin_panel   = "INEWTBLA"
+                    browse_panel  = "INEWSBRO"
+                    edit_panel    = "INEWSEDT"
+                    news_skeleton = "INEWTEST"
+                    ext_variable  = "EXPDATE"
+                    news_id       = "VTST"
+                    title         = "Test Systems News and Information"
+                    end
+        if length(news_dsn) = 0 then do
+                   smsg = null
+                   lmsg = "You have not requested a news application",
+                          "- contact your systems administrator"
+                   ADDRESS ISPEXEC "SETMSG MSG(INEW000)"
+                   exit 0
+                   end
+        if wordpos("FORCE",options) > 0 then force = "on"
+        if wordpos("NEW",options)   > 0 then show_opt = "new"
+                                        else show_opt = "all"
+        if wordpos("TEST",options)  > 0 then do
+           test = "on"
+           if sysdsn("'"news_dsn"'") <> "OK" then do
+              Address TSO
+              "Alloc ds('"news_dsn"') New Catalog Recfm(F B) Lrecl(80)",
+                    "Dir(15) Blksize(0) Space(15,15) Tr"
+              "Free  ds('"news_dsn"')"
+              Address ISPExec
+              end
+           end
+        if wordpos("ADMIN",options) > 0 then do
+           admin = 9  /* flag to test later */
+           select
+           when admin_users = "RACF" then do
+              call outtrap "racf."
+              Address TSO ,
+                  "LU" sysvar('sysuid')
+              call outtrap "off"
+              parse value racf.2 with " DEFAULT-GROUP=" group .
+              groups = "SDSMVS SYSSCP01 SDSDOSS SYSTSOGP" ,
+                       "SDSMCSS COMTSOGP"
+              if wordpos(group,groups) > 0 then
+                 admin = "on"
+               if admin <> "on" then do
+                   smsg = null
+                   lmsg = "You are not authorized for this function"
+                   ADDRESS ISPEXEC "SETMSG MSG(INEW000)"
+                   exit 0
+                   end
+              panel = admin_panel
+              end
+           when wordpos(sysvar(sysuid),admin_users) > 0 then do
+              admin = "on"
+              panel = admin_panel
+              end
+           when pos('*',admin_users) > 0 then do forever
+               parse value admin_users with tid'*' admin_users
+               if words(tid) > 1 then do
+                  tid = word(tid,words(tid))
+                  end
+               tid = strip(tid)
+               if length(tid) = 0 then leave
+               if left(sysvar('sysuid'),length(tid)) = tid then admin = "on"
+               if admin = "on" then leave
+               end
+           when admin_users = "*" then do
+              admin = "on"
+              end
+           otherwise do
+                   smsg = null
+                   lmsg = "You are not authorized for this function"
+                   ADDRESS ISPEXEC "SETMSG MSG(INEW000)"
+                   exit 0
+                   end
+           end
+           end
+           if admin = "on" then
+              panel = admin_panel
+           if admin = 9 then do
+                   smsg = null
+                   lmsg = "You are not authorized for this function"
+                   ADDRESS ISPEXEC "SETMSG MSG(INEW000)"
+                   exit 0
+                   end
+
+        /* ------------------------------------------------------------- *
+         * Verify that the news_id is 4 characters of less...            *
+         * ------------------------------------------------------------- */
+        if length(news_id) > 4 then do
+                        smsg = null
+                        lmsg = "Severe Error with news_id -",
+                               "contact your systems administrator"
+                        ADDRESS ISPEXEC "SETMSG MSG(INEW000)"
+                        exit 0
+                        end
+
+        /* -------------------------- *
+         * Center the title           *
+         * -------------------------- */
+         title = center(title,65,)
+
+        /* ------------------------------------------------------------- *
+         * Set the data set name variable for the news table d/s         *
+         * ------------------------------------------------------------- */
+        if admin <> "on" then
+           active_dsn = news_dsn
+           else
+           active_dsn = admin_dsn
+
+        if sysdsn("'"news_dsn"'") <> "OK" then do
+           if show_opt = "new" then exit 0
+           else do
+                smsg = null
+                lmsg = "The ISPF" news_id "News application is not supported",
+                       "on this system."
+                Address ISPEXEC
+                call do_msg
+                exit 0
+                end
+        end
+
+        parse value '1 1 0 0 0' with crp rowcrp last_find new_counter,
+                     prev_crp
+
+        if admin = "on" then rowcrp = 0
+
+        today = substr(date('S'),3)
+
+        Address ISPEXEC
+        "Control Errors Return"
+
+        /* ------------------------------------------------------------- *
+         * Open the users one row table containing news item status      *
+         * ------------------------------------------------------------- */
+        call TBOpen_User
+
+        User_Display:
+        do forever
+
+        usrrfind = "PASSTHRU"
+        "VPUT USRRFIND"
+        zcmd = null
+        if src = 4 then "TBDispl news"
+           else do
+                "TBTOP news"
+                "TBSKIP news NUMBER("crp")"
+                if rowcrp = 0 then
+                   "TBDISPL news PANEL("panel")"
+                   else
+                   "TBDISPL news PANEL("panel")",
+                           "CSRROW("rowcrp") AUTOSEL(NO)"
+                end
+        src = rc
+
+        Usrrfind = null
+        "VPUT USRRFIND"
+
+          if src > 4 then do
+             if Changed <> "on" then
+                signal Out_A_Here
+                smsg = null
+                lmsg = "You have changed the table - enter SAVE",
+                       " to save it or Cancel to exit now"
+                call do_msg
+             end
+
+        crp = ztdtop
+        rowcrp = null
+
+        if row <> null then
+           if row > 0 then do
+             "TBTop news"
+             "TBSkip news NUMBER("row")"
+             end
+
+        zcmd_ok = null
+
+        Select
+          When abbrev("CHECK",word(zcmd,1),2) = 1 then call Check_News
+          When words(Zcmd) > 1 then do
+               parse value zcmd with o1 o2
+               if abbrev("SEARCH",o1,1) = 1 then call Search_Table
+               if abbrev("FIND",o1,1) = 1 then call Find_It
+               if zcmd_ok <> "ok" then do
+                  smsg = "Error"
+                  lmsg = "Invalid command:" zcmd
+                  "Setmsg Msg(INEW000)"
+                  end
+               end
+          When abbrev("REFRESH",zcmd,2) = 1 then do
+                  refresh = 1
+                  signal out_a_here
+                  end
+          When zcmd = "RFIND" then do
+               zcmd = "RFIND" o2
+               call Find_It
+               end
+          When zcmd = "XALL" then call Mark_All_Ignored
+          When abbrev("NEW",zcmd,1) = 1 then call Create_New_Item
+          When abbrev("SAVE",zcmd,1) = 1 then call Save_It
+          When abbrev("CANCEL",zcmd,2) = 1 then call Out_A_Here
+          When length(zcmd) = 0 then do
+             if row <> 0 then do
+                  Select
+                    When admin = "on" then select
+                          When zsel = "D" then call Delete_It
+                          When zsel = "P" then call Print_it
+                          When zsel = "U" then call Update_Item
+                          When zsel = "C" then call Clone_Item
+                          When zsel = "S" then call Read_it
+                          otherwise nop;
+                          end
+                    When admin <> "on" then select
+                          When zsel = "S" then call Read_it
+                          When zsel = "X" then call Ignore_it
+                          When zsel = "U" then call Unread_it
+                          When zsel = "P" then call Print_it
+                          otherwise nop;
+                          end
+                    otherwise nop;
+                    end
+               end
+          end
+          otherwise nop
+        end
+
+        signal User_Display
+
+        Do_Admin:
+        lockdd = "LOCK"random()
+
+        if "OK" = sysdsn("'"news_dsn"(LOCK)'") then do
+           if force <> "on" then do
+           Address TSO,
+             "Alloc f("lockdd") ds('"news_dsn"(LOCK)') Shr"
+           Address TSO,
+             "Execio * diskr "lockdd" (finis stem lock."
+           Address TSO,
+             "Free f("lockdd")"
+           smsg = null
+           lmsg = "The News Administration Fucntion is currently in",
+                  "use by:" strip(lock.1) "Contact that individual to",
+                  "verify when they will be done so you can proceed.",
+                  "To over-ride just delete member 'LOCK' in the news",
+                  "data set: '"news_dsn"'"
+           call do_msg
+           exit 0
+           end
+        end
+
+        else do
+           Address TSO,
+             "Alloc f("lockdd") ds('"news_dsn"(LOCK)') Shr"
+           lock. = null
+           lock.0 = 0
+           lock.1 = sysvar(sysuid) date('u') time('c')
+           Address TSO,
+             "Execio * diskw "lockdd" (finis stem lock."
+           Address TSO,
+             "Free f("lockdd")"
+           end
+
+        created_members = null
+
+        if "OK" <> sysdsn("'"admin_dsn"'") then do
+           Address TSO,
+           "Alloc DS('"admin_dsn"') New Space(15,15) Dir(42) Tr",
+           "Lrecl(80) Recfm(F B) Blksize(0)"
+           Address TSO,
+           "Free DS('"admin_dsn"')"
+           end
+           else do
+                x = msg("OFF")
+                Address TSO,
+                  "Delete '"admin_dsn"(news)'"
+                Address TSO,
+                  "Delete '"admin_dsn"(itemtbl)'"
+                x = msg("ON")
+                end
+
+        "LIBDEF PRDNEWS DATASET ID('"NEWS_dsn"')"
+        "LIBDEF NEWS DATASET ID('"admin_dsn"')"
+
+        "LMINIT DATAID(prdnews) DATASET('"news_dsn"') Enq(shr)"
+        "LMInit Dataid(news)    DataSet('"admin_dsn"') Enq(shr)"
+
+        "LMCopy FROMID("prdnews")",
+               "TODATAID("news") FROMMEM(news) Replace"
+        "LMCopy FROMID("prdnews")",
+               "TODATAID("news") FROMMEM(itemtbl) Replace"
+
+        "LMFREE Dataid("prdnews")"
+        "LMFREE Dataid("news")"
+
+        tbopen:
+        "TBOPEN NEWS LIBRARY(NEWS) WRITE"
+          If rc <> 0 Then               /* Return codes                     */
+            Select                      /*  8 - Table does not exist        */
+            When rc = 8 then do
+               "TBCreate news Keys(item)",
+                        "Names(Subject Member Status Date Author)",
+                        "Library(news) Write"
+               "TBSort   news Fields(item,N,D)"
+               "TBSAVE news REPLCOPY LIBRARY(news)"
+               call Create_New_Item
+               end
+            When rc = 12 then do        /* 12 - Table in use; enq failed    */
+               if open_sw <> "on" then do
+                  "TBCLOSE news ReplCopy Library(News)"
+                  open_sw = "on"
+                  signal tbopen
+                  end
+               smsg = null
+               lmsg = news_id "News Table ("active_dsn") in use - try later"
+               "Setmsg Msg(INEW000)"
+               "LIBDEF PRDNEWS"
+               "LIBDEF NEWS"
+               exit 0
+               end
+            When rc > 12 then do        /* 16 - Input library not allocated */
+               smsg = null              /* 20 - Severe error                */
+               lmsg = news_id "News Error - Contact System Support"
+               "Setmsg Msg(INEW000)"
+               "LIBDEF PRDNEWS"
+               "LIBDEF NEWS"
+               exit 0
+               end
+            otherwise nop;
+            End
+        open_sw = null
+        text = null
+
+        return
+
+        /* ------------------------------------------------------------- *
+         * Individual processing sub-routines follow:                    *
+         *                                                               *
+         * General routines:                                             *
+         * Find_It         -  Find an item                               *
+         * Ignore_It       -  Flag an item as Ingored                    *
+         * Print_It        -  Print an item                              *
+         * Read_It         -  Read an item                               *
+         * Unread_It       -  Flag item as Unread                        *
+         * Search_Table    -  Search all items for character string      *
+         * Do_Msg          -  issue ispf setmsg                          *
+         * check_expire_date  - see if expdate variable in table         *
+         * TBOpen_User     -  Opens the user item table                  *
+         * Read_Index      -  Reads the word index for the Search option *
+         * Out_A_Here      -  Exit routine                               *
+         * Mark_All_Ignored- Mark all items as Ignored                   *
+         *                                                               *
+         * ------------------------------------------------------------- *
+         * Admin routines:                                               *
+         * Create_New_Item -  Create a New Item                          *
+         * Delete_It       -  Deletes an item                            *
+         * Save_It         -  Save the News Table                        *
+         * Get_Item_ID     -  gets the next item number                  *
+         *                                                               *
+         * ------------------------------------------------------------- */
+
+        /* ------------------------------------------------------------- *
+         * Delete_it routine used by the administrator to remove items   *
+         * from the news and information table and also delete the       *
+         * item from the news data set.                                  *
+         * ------------------------------------------------------------- */
+        Delete_it:
+            "LMINIT DATAID(dataid) DATASET('"news_dsn"') ENQ(SHRW)"
+            "LMOPEN DATAID("dataid") OPTION(OUTPUT)"
+            "LMMDEL DATAID("dataid") MEMBER("member")"
+            "LMCLOSE DATAID("dataid")"
+            "LMFREE DATAID("dataid")"
+            "TBDelete news"
+        return
+
+        /* ------------------------------------------------------------- *
+         * Find_it routine to search the table subject entries for the   *
+         * specified character string.  The search is done using         *
+         * REXX instead of using the ISPF TBSCAN which is very limited.  *
+         * ------------------------------------------------------------- */
+        Find_It:
+           zcmd_ok = "ok"
+           parse value zcmd with o1 argument
+           find_argument = argument
+           upper argument
+           argument = strip(argument)
+           zsel = null
+           crp = ztdtop
+           rowid = crp
+           start_crp = crp
+           find_loop = null
+           search = null
+           if o1 = "RFIND" then do
+              if prev_crp <> start_crp then last_find = start_crp
+              last_find = last_find + 1
+              "TBTOP  news"
+              "TBSKIP news     Position(ROWID) Number("Last_find")"
+              end
+              else do
+                   "TBSKIP news     Position(ROWID) Number("start_crp")"
+                   end
+           if rc = 8 then do
+                          s_smsg = find_argument "Found Wrapped"
+                          "TBTOP  news"
+                          "TBSKIP news     Position(ROWID)"
+                          end
+                     else s_smsg = find_argument "Found"
+
+           /* perform search */
+
+           do forever
+              search = translate(subject)
+              if pos(argument,search) > 0 then do
+                 crp = rowid + 0
+                 rowcrp = crp
+                 last_find = crp
+                     smsg = s_smsg  /* "Found" */
+                     lmsg = find_argument "found during search in row:" crp
+                     call do_msg
+                 prev_crp = start_crp
+                 return
+                 end
+              "TBSKIP news POSITION(Rowid)"
+              if rc = 8 then do
+                    "TBTOP news"
+                     s_smsg = find_argument "Found Wrapped"
+                 if find_loop = "on" then do
+                     smsg = find_argument "Not Found"
+                     lmsg = find_argument "Not found during search"
+                     rowid = crp
+                     call do_msg
+                     prev_crp = start_crp
+                     return
+                     end
+                     else find_loop = "on"
+                 end
+              zsel = null
+              end
+        return
+
+        Search_Table:
+           zcmd_ok = "ok"
+           argument = translate(o2)
+           argument = strip(argument)
+           parse value null with zsel show_opt smsg lmsg,
+                       hit hit_items
+           src    = 0
+           crp    = 1
+           rowcrp = 0
+           hits   = 0
+          "TBEnd news"
+          call tbopen_user
+          call search_for "'"news_dsn"'" argument
+          src = rc
+          'Vget inewmems'
+          if src > 0 then do
+             lmsg = "The requested word/string" argument "was not found.",
+                    "All items displayed."
+             end
+          else do
+             hit = words(inewmems)
+             hit_items = strip(inewmems)
+            "TBTop news "
+            "TBSkip news"
+             do forever
+                if wordpos(member,hit_items) = 0 then do
+                   "TBDelete news"
+                   end
+                   else hits = hits + 1
+                "TBSkip news"
+                if rc > 0 then leave
+                end
+             lmsg = "The requested word/string" argument "was found in",
+                    "the" hits "displayed items."
+             end
+        call do_msg
+        "TBTop news"
+        return
+
+        /* ------------------------------------------------------------- *
+         * Ignore_it routine to flag an item as Ignored.                 *
+         * ------------------------------------------------------------- */
+        Ignore_it:
+           if admin <> "on" then do
+              x = pos(" "item"/",text)
+              l = length(item"/X")
+              text = overlay(item"/X",text,x+1,l)
+              call Save_User
+              end
+           status = "Ignored"
+           if show_opt = "new" then do
+             "TBDelete news"
+             new_counter = new_counter - 1
+             if new_counter = 0 then signal Out_A_Here
+             end
+           else do
+                if ext_variable = null then
+                   "TBMOD news"
+                   else "TBMOD News Save("ext_variable")"
+                   end
+        return
+
+        /* ------------------------- *
+         * Mark ALL items as Ignored *
+         * ------------------------- */
+        Mark_All_Ignored:
+           if admin <> "on" then do
+              text = translate(text,'XX','UN')
+              call Save_User
+              "TBTop News"
+              do forever
+                 "TBSkip News"
+                 if rc > 0 then do
+                    "TBTop News"
+                    leave
+                    end
+                 if pos(status,'New Unread') > 0 then
+                    status = "Ignored"
+                 "TBPut news"
+                 end
+              smsg = null
+              lmsg = "All New and Unread News Items have been" ,
+                     "marked as Ignored"
+              call do_msg
+              end
+        return
+
+        /* ------------------- *print* --------------------------------- *
+         * Print_it routine to print the selected news item.             *
+         *                                                               *
+         * ISPF file tailoring is used to include the subject, etc.      *
+         * as a title for the printed item.                              *
+         *                                                               *
+         * File tailoring is used to a data set allocated by this        *
+         * application of the format userid.NEWS.item.REPORT which       *
+         * is deleted after printing.                                    *
+         *                                                               *
+         * The  PPRINT generalized print application is used             *
+         * to do the actual printing.                                    *
+         * ------------------------------------------------------------- */
+        Print_it:
+           if admin <> "on" then do
+              x = pos(" "item"/",text)
+              l = length(item"/R")
+              text = overlay(item"/R",text,x+1,l)
+              end
+           "Libdef ISPSLIB Dataset Id('"active_dsn"')"
+           report_dsn = "'"sysvar(syspref)".NEWS."member".REPORT'"
+           Address TSO,
+             "Allocate F(ISPFILE) DS("report_dsn") NEW Reuse",
+             "Recfm(F B) Lrecl(80) Blksize(0) Space(2,2) Tr"
+           "FTOpen"
+           "FTIncl" news_skeleton
+           "FTClose"
+           "Libdef ISPSLIB"
+           "Control Display Save"
+        /* ----------------------------------------------------- *
+         * *PRINT* Fix the next statement for your print routine *
+         * ----------------------------------------------------- */
+           "Select CMD(%PRINTIT" report_dsn ")"
+           "Control Display Restore"
+           msg_opt = msg()
+           x = msg("OFF")
+           Address TSO,
+              "Free f(ISPFILE)"
+           Address TSO,
+              "Delete" report_dsn
+           x = msg(msg_opt)
+           status = "Printed"
+           if ext_variable = null then
+              "TBMOD news"
+              else "TBMOD News Save("ext_variable")"
+        return
+
+        /* ------------------------------------------------------------- *
+         * Read_it routine to use ISPF Browse to view the selected       *
+         * news and information item.  The browse uses a customized      *
+         * ISPF Browse Panel to allow the display of subject, etc.       *
+         * for the user as that information is not part of the item      *
+         * text.                                                         *
+         * ------------------------------------------------------------- */
+        Read_it:
+           if admin <> "on" then do
+              x = pos(" "item"/",text)
+              l = length(item"/R")
+              text = overlay(item"/R",text,x+1,l)
+              call Save_User
+              end
+           "TBGET news"
+           "Control Display Save"
+           "Browse Dataset('"active_dsn"("member")') Panel("browse_panel")"
+           "Control Display Restore"
+           status = "Read"
+           if ext_variable = null then
+              "TBMOD news"
+              else "TBMOD News Save("ext_variable")"
+        return
+
+        /* ------------------------------------------------------------- *
+         * Unread_it routine will flag an item in the users news item    *
+         * tracking table as unread so that it will cause the display    *
+         * of the table when next invoked using the NEW keyword.         *
+         * ------------------------------------------------------------- */
+        Unread_it:
+           if admin <> "on" then do
+              x = pos(" "item"/",text)
+              l = length(item"/U")
+              text = overlay(item"/U",text,x+1,l)
+              call Save_User
+              end
+           status = "Unread"
+           if ext_variable = null then
+              "TBMOD news"
+              else "TBMOD News Save("ext_variable")"
+        return
+
+        /* ------------------------------------------------------------- *
+         * Save_it routine.  This routine is used by the Administration  *
+         * function to save the updated news table and then copy the     *
+         * updated NEWS, ITEMTBL and items from the work data set into   *
+         * the production data set.                                      *
+         * ------------------------------------------------------------- */
+        Save_it:
+           if admin <> "on" then do
+              smsg = null
+              lmsg = "Error: Command SAVE is not allowed"
+              call do_msg
+              return
+              end
+           "TBSAVE news REPLCOPY LIBRARY(news)"
+           "LMINIT DATAID(prdnews) DATASET('"news_dsn"') Enq(shr)"
+           "LMInit Dataid(news)    DataSet('"admin_dsn"')"
+           if length(created_members) > 0 then
+              do new_count = 1 to words(created_members)
+                "LMCopy ToDATAID("prdnews")",
+                       "FromID("news")",
+                       "FROMMEM("word(created_members,new_count)")",
+                       "ToMEM("word(created_members,new_count)")",
+                       " Replace"
+                 end
+           "LMCopy ToDATAID("prdnews")",
+                  "FromID("news") FROMMEM(news) ToMem(news) Replace"
+           "LMCopy ToDATAID("prdnews")",
+                  "FromID("news") FROMMEM(itemtbl) ToMem(itemtbl) Replace"
+           "LMFREE Dataid("prdnews")"
+           "LMFREE Dataid("news")"
+           smsg = null
+           lmsg = "News Table saved and copied into production data set.",
+                  "Members updated were:" created_members"."
+           call do_msg
+           Changed = null
+           created_members = null
+        return
+
+        /* ------------------------------------------------------------- *
+         * Save_user routine will save the users item tracking table     *
+         * after each items status is changed.                           *
+         * ------------------------------------------------------------- */
+        Save_User:
+           if admin = "on" then return
+           "TBPUT" news_id"TBL"
+           "TBSAVE "news_id"TBL REPLCOPY Library(ISPPROF)"
+           return
+
+        /* ------------------------------------------------------------- *
+         * Do_msg routine is used to issue the ISPF Message....          *
+         * ------------------------------------------------------------- */
+        Do_Msg:
+           "Setmsg Msg(INEW000)"
+        return
+
+        /* ------------------------------------------------------------- *
+         * Create_new_item routine.                                      *
+         *                                                               *
+         * this routine is invoked by the administration function to     *
+         * create new news and information items.  A customized ISPF     *
+         * Edit panel is used to prompt for the subject, etc.            *
+         *                                                               *
+         * The member name is determined by the item number.             *
+         * ------------------------------------------------------------- */
+        Create_New_Item:
+           if admin <> "on" then do
+              smsg = null
+              lmsg = "Error: Command NEW is not allowed"
+              call do_msg
+              return
+              end
+           "TBSORT news Fields(item,N,D)"
+           "TBTop news"
+           "TBSkip news"
+           call Get_Item_id
+           date   = date('U')
+           Status = "New"
+           Member = "N"right(item+100000,5)
+           Author = null
+           Subject = ' '
+           "Control Display Save"
+           do forever
+            "Edit Dataset('"active_dsn"("member")') Panel("edit_panel")",
+            "Macro(inewEM)"
+               "vget inewsend"
+               if wordpos(inewsend,"END CANCEL") > 0 then leave
+             end
+           "Control Display Restore"
+            "VGET (INEWSEND)"
+            if inewsend = "CANCEL" then do
+              smsg = "Cancelled"
+              lmsg = "Creation of new NEWS item has been cancelled"
+              "Setmsg Msg(INEW000)"
+              end
+           else do
+              if ext_variable = null then
+                "TBAdd news Order"
+                else
+                "TBAdd news Order Save("ext_variable")"
+              created_members = created_members member
+              Changed = "on"
+              smsg = "OK"
+              lmsg = "Creation of new NEWS item was successful",
+                     "- don't forget to save the table"
+              "Setmsg Msg(INEW000)"
+              end
+        return
+
+        /* ------------------------------------------------------------- *
+         * Update_item routine    .                                      *
+         *                                                               *
+         * this routine is invoked by the administration function to     *
+         * update news and information items. A customized ISPF          *
+         * Edit panel is used to prompt for the subject, etc.            *
+         *                                                               *
+         * The member name is determined by the item number.             *
+         * ------------------------------------------------------------- */
+        Update_Item:
+           if admin <> "on" then do
+              smsg = null
+              lmsg = "Error: Command Update is not allowed"
+              call do_msg
+              return
+              end
+           "Control Display Save"
+           opt = 'U'
+           do forever
+            "Edit Dataset('"active_dsn"("member")') Panel("edit_panel")",
+            "Macro(inewEM) Parm(opt)"
+               "vget inewsend"
+               if wordpos(inewsend,"END CANCEL") > 0 then leave
+             end
+           "Control Display Restore"
+            "VGET (INEWSEND)"
+            if inewsend = "CANCEL" then do
+              smsg = "Cancelled"
+              lmsg = "Update of new NEWS item has been cancelled"
+              "Setmsg Msg(INEW000)"
+              end
+           else do
+              if ext_variable = null then
+                "TBPut news Order"
+                else
+                "TBPut news Order Save("ext_variable")"
+              created_members = created_members member
+              Changed = "on"
+              smsg = "OK"
+              lmsg = "Update of new NEWS item was successful",
+                     "- don't forget to save the table"
+              "Setmsg Msg(INEW000)"
+              end
+        return
+
+        /* ------------------------------------------------------------- *
+         * Clone_Item routine                                            *
+         *                                                               *
+         * this routine is invoked by the administration function to     *
+         * clone a news item into a new news item. A customized ISPF     *
+         * Edit panel is used to prompt for the subject, etc.            *
+         *                                                               *
+         * The member name is determined by the item number.             *
+         * ------------------------------------------------------------- */
+        Clone_Item:
+           if admin <> "on" then do
+              smsg = null
+              lmsg = "Error: Command Update is not allowed"
+              call do_msg
+              return
+              end
+           "Control Display Save"
+           opt = 'C'
+           hold_subject = subject
+           hold_author = author
+           hold_date   = date
+           "Edit Dataset('"active_dsn"("member")') Panel("edit_panel")",
+           "Macro(inewEM) Parm(opt)"
+           "TBSORT news Fields(item,N,D)"
+           "TBTop news"
+           "TBSkip news"
+           call Get_Item_id
+           Status = "New"
+           subject = hold_subject
+           author  = hold_author
+           date    = hold_date
+           Member = "N"right(item+100000,5)
+           opt = 'P'
+           do forever
+            "Edit Dataset('"active_dsn"("member")') Panel("edit_panel")",
+            "Macro(inewEM) Parm(opt)"
+               "vget inewsend"
+               if wordpos(inewsend,"END CANCEL") > 0 then leave
+             end
+           "Control Display Restore"
+            "VGET (INEWSEND)"
+            if inewsend = "CANCEL" then do
+              smsg = "Cancelled"
+              lmsg = "Clone of new NEWS item has been cancelled"
+              "Setmsg Msg(INEW000)"
+              end
+           else do
+              if ext_variable = null then
+                "TBAdd news Order"
+                else
+                "TBAdd news Order Save("ext_variable")"
+              created_members = created_members member
+              Changed = "on"
+              smsg = "OK"
+              lmsg = "Clone of new NEWS item was successful",
+                     "- don't forget to save the table"
+              "Setmsg Msg(INEW000)"
+              end
+        return
+
+        /* ------------------------------------------------------------- *
+         * Get_item_id routine.  Used by the administation function to   *
+         * get the next item number for new items.                       *
+         * ------------------------------------------------------------- */
+        Get_Item_ID:
+         "TBOPEN ITEMTBL LIBRARY(NEWS) WRITE"
+          If rc <> 0 Then               /* Return codes                     */
+            Select                      /*  8 - Table does not exist        */
+            When rc = 8 then do
+               "TBCreate Itemtbl",
+                        "Names(Itemnum)",
+                        "Library(news) Write"
+               itemnum = 1
+               "TBADD    Itemtbl"
+               "TBCLOSE  Itemtbl Replcopy Library(news)"
+               item = itemnum
+               return
+               end
+            When rc = 12 then do        /* 12 - Table in use; enq failed    */
+               if open_sw <> "on" then do
+                  "TBCLOSE Itemtbl Replcopy Library(news)"
+                  open_sw = "on"
+                  signal get_item_id
+                  end
+               smsg = null
+               lmsg = news_id "News Table in use - try later"
+               "Setmsg Msg(INEW000)"
+               "LIBDEF NEWS"
+               exit 0
+               end
+            When rc > 12 then do        /* 16 - Input library not allocated */
+               smsg = null              /* 20 - Severe error                */
+               lmsg = news_id "News Error - Contact System Support"
+               "Setmsg Msg(INEW000)"
+               "LIBDEF NEWS"
+               exit 0
+               end
+            otherwise nop;
+            End
+        "TBSkip   Itemtbl"
+        itemnum = itemnum + 1
+        item = itemnum
+        "TBPUT    Itemtbl"
+        "TBCLOSE  Itemtbl Replcopy Library(news)"
+        open_sw = null
+        return
+
+        Tbopen_User:
+        /* ------------------------------------------------------------- *
+         * Tbopen_User:                                                  *
+         *                                                               *
+         * This routine opens and reads the users item table             *
+         * ------------------------------------------------------------- */
+        if admin = "on" then call Do_Admin
+           else do
+        "TBOPEN "news_id"TBL Library(ISPPROF) WRITE"
+            Select
+            when rc = 0 then "TBSkip" news_id"TBL"
+            when rc = 8 then do         /*  8 - Table does not exist    */
+               "TBCreate "news_id"TBL Names(Text) Write",
+                         "Library(ISPPROF)"
+               text = null
+               item = null
+               "TBADD" news_id"TBL"
+               "TBSAVE "news_id"TBL REPLCOPY Library(ISPPROF)"
+               show_opt = "all" /* first time */
+               end
+            when rc = 12 then do          /* 12 - Table in use; enq failed  */
+               if open_sw <> "on" then do
+                  "TBCLOSE" news_id"TBL Library(ISPPROF)"
+                  open_sw = "on"
+                  signal tbopen_user
+                  end
+               smsg = null
+               lmsg = news_id "User News Table in use - try later"
+               "Setmsg Msg(INEW000)"
+               exit 0
+               end
+            when rc > 12 then do        /* 16 - Input library not allocated */
+               smsg = null              /* 20 - Severe error                */
+               lmsg = news_id "News Error - Contact System Support"
+               "Setmsg Msg(INEW000)"
+               exit 0
+               end
+            otherwise nop;
+            End
+            open_sw = null
+
+           "LIBDEF NEWS    DATASET ID('"active_dsn"')"
+
+           "TBOPEN NEWS LIBRARY(NEWS) NOWRITE SHARE"
+
+          /* --------------------------------------------------------- *
+           * Get the highest item number for new checking.             *
+           * --------------------------------------------------------- */
+           "TBOPEN ITEMTBL LIBRARY(NEWS) NOWRITE SHARE"
+           "TBSkip ITEMTBL"
+            high_item = itemnum
+           "TBEnd ITEMTBL"
+        end
+
+        /* ------------------------------------------------------------- *
+         * Process for display only NEW items:                           *
+         *                                                               *
+         * Check the high_item value with the users table and if it is   *
+         * found then exit as we have seen all items..........           *
+         * ------------------------------------------------------------- */
+        if show_opt = "new" then
+           select
+           when pos(high_item"/",text) = 0 then nop
+           when pos("/U",text) > 0 then nop
+           otherwise  call Out_A_Here
+           end
+
+        /* ------------------------------------------------------------- *
+         * The table is sorted by item number in descending order        *
+         * so the newest is on the top of the display...............     *
+         * ------------------------------------------------------------- */
+        "TBTop  news"
+        "TBSkip news"
+
+        /* ------------------------------------------------------------- *
+         * If not admin then update each table row with the status from  *
+         * the users item status table.                                  *
+         *                                                               *
+         *    /E = Expired                                               *
+         *    /N = Not Applicable                                        *
+         *    /R = Read                                                  *
+         *    /U = Unread                                                *
+         *    /X = Ignored                                               *
+         * ------------------------------------------------------------- */
+        if admin <> "on" then do
+           "TBQuery NEWS Rownum("rownews")"
+           all_rows = rownews
+           Do i = 1 to rownews
+              Select
+                 when pos(" "item"/",text) > 0 then do
+                    x = pos(" "item"/",text)
+                    l = length(" "item"/")
+                    status = substr(text,x+l,1)
+                    end
+                 when pos(" "item"/",text) = 0 then do
+                      status = "New"
+                      text = text item"/U"
+                      end
+                 otherwise nop;
+                 end
+               Select
+                  When status = "R" then status = "Read"
+                  When status = "X" then status = "Ignored"
+                  When status = "U" then status = "Unread"
+                  When status = "N" then status = "NotAppl"
+                  When status = "E" then status = "Expired"
+                  otherwise nop;
+                  end
+          /* --------------------------------------------------------- *
+           * if NEWS option then do not display 'old' items...         *
+           * --------------------------------------------------------- */
+              if show_opt = "new" then do
+                 if wordpos(status,"Unread New") = 0 then do
+                     "TBDelete news"
+                     all_rows = all_rows - 1
+                     end
+                     else do
+                          check_rc = 0
+                          call check_expire_date
+                          if check_rc = 0 then do
+                                new_counter = new_counter + 1
+                                if ext_variable = null then
+                                   "TBMOD news"
+                                   else "TBMOD News Save("ext_variable")"
+                             end
+                          if check_rc > 0 then do
+                             "TBDelete news"
+                             all_rows = all_rows - 1
+                             end
+                          end
+                 end
+               else do
+                    if ext_variable = null then
+                       "TBMOD news"
+                       else "TBMOD News Save("ext_variable")"
+                   end
+              "TBSkip news"
+           end
+        call Save_User
+        end /* end do for admin <> "on" */
+
+        if all_rows = 0 then signal Out_A_Here
+
+        "TBSort news Fields(item,N,D)"
+        "TBTop news"
+
+        return
+
+        check_expire_date:
+        /* ------------------------------------------------------------- *
+         * check_expire_date:                                            *
+         *                                                               *
+         * This routine will see if the EXPDATE variable is defined      *
+         * in the ext_variable in the ISPF Table.  If so, then it will   *
+         * be validated for Admin function and for New will determine    *
+         * if the item has expired.                                      *
+         *                                                               *
+         * Invalid or Expired will cause check_rc to be set to 2         *
+         * otherwise it will be unchanged.                               *
+         *                                                               *
+         * ------------------------------------------------------------- */
+         if wordpos("EXPDATE",ext_variable) = 0 then return
+         if length(expdate) = 0 then do
+            if admin = "on" then
+               check_rc = 2
+            return
+            end
+         if datatype(expdate) <> "NUM" then do
+            check_rc = 2
+            return
+            end
+         parse value expdate with mm "/" dd "/" yy
+         if mm = null then check_rc = 2
+         if dd = null then check_rc = 2
+         if yy = null then check_rc = 2
+         if dd > 31 then check_rc = 2
+         if mm > 12 then check_rc = 2
+         if check_rc = 2 then return
+         if admin = "on" then return
+         dd = 100 + dd
+         mm = 100 + mm
+         item_date = yy""substr(mm,2,2)""substr(dd,2,2)
+         if item_date < today then do
+              check_rc = 2
+              x = pos(" "item"/",text)
+              l = length(item"/E")
+              text = overlay(item"/E",text,x+1,l)
+              end
+         return
+
+        read_index:
+        /* ------------------------------------------------------------- *
+         *  This routine reads the words from the index for use with     *
+         *  the SEARCH command.                                          *
+         * ------------------------------------------------------------- */
+         if read_index = "on" then return
+                              else read_index = "on"
+         index_dd = "Index"random()
+         Address TSO
+         "Alloc f("index_dd") ds('"news_dsn"(INDEX)') Shr Reuse"
+         "Execio * diskr" index_dd "(Finis Stem index."
+         "Free f("index_dd")"
+         Address ISPexec
+         word. = null
+         do idx_count = 1 to index.0
+            word = word(index.idx_count,1)
+            if length(word.word) = 0 then
+               word.word = index.idx_count
+               else
+               word.word = word.word index.idx_count
+            end
+        drop index.
+        return
+
+        /* --------------------------------------------------------- *
+         | Check_News routine will:                                  |
+         |  - verify option provided is either ON or OFF             |
+         |    - default to ON                                        |
+         |    - error if otherwise                                   |
+         |  - Call the %inewsset exec with either E (enable - ON) or |
+         |    D (disable - OFF) for both applid ISR and ISP          |
+         * --------------------------------------------------------- */
+         Check_News:
+         if word(zcmd,2)  = 'ON' then check_opt = 'E'
+         if word(zcmd,2) = 'OFF' then check_opt = 'D'
+         if words(zcmd) = 1 then check_opt = 'E'
+         'Select cmd(%inewsset' check_opt') newappl(ISR)'
+         'Select cmd(%inewsset' check_opt') newappl(ISP)'
+         smsg =
+         if check_opt = 'E' then smsg = 'Enabled'
+                            else smsg = 'Disabled'
+         lmsg = 'The ISPF ZSTART variable has been updated to' ,
+                left(smsg,length(smsg)-1) 'the call to Check' ,
+                'ISPF News at ISPF Startup.'
+         address ispexec "setmsg msg(inew000)"
+         return
+
+        /* ------------------------------------------------------------- *
+         * Out_a_here routine.   This is where everything comes to an    *
+         * end (as all good things must).............................    *
+         * ------------------------------------------------------------- */
+        Out_A_Here:
+        if admin <> "on" then do
+           "TBSAVE "news_id"TBL REPLCOPY Library(ISPPROF)"
+           "TBCLOSE" news_id"TBL Library(ISPPROF)"
+           end
+        else do
+            "LMINIT DATAID(dataid) DATASET('"news_dsn"') ENQ(SHRW)"
+            "LMOPEN DATAID("dataid") OPTION(OUTPUT)"
+            "LMMDEL DATAID("dataid") MEMBER(LOCK)"
+            "LMCLOSE DATAID("dataid")"
+            "LMFREE DATAID("dataid")"
+            "LIBDEF PRDNEWS"
+           end
+        "TBEnd news "
+        "LIBDEF NEWS"
+        if refresh = 1 then signal restart
+        exit 0
+
+Search_For: Procedure
+/* --------------------  rexx procedure  -------------------- *
+ * Name:      inewssch                                        *
+ *                                                            *
+ * Function:  Search the ispf news dataset and return list    *
+ *            of members with the string/text                 *
+ *                                                            *
+ * Syntax:    %inewssch table.dsn 'string'                    *
+ *                                                            *
+ * Author:    John Kalinich                                   *
+ *            Modified by Lionel B. Dyck for INEWS            *
+ *                                                            *
+ * History:                                                   *
+ *            02/15/17 - repurposed and modified              *
+ *            08/02/16 - created                              *
+ * ---------------------------------------------------------- */
+
+ arg inewsdsn string
+
+ parse value '' with null inewmems
+
+ Address ISPExec
+ if sysdsn(inewsdsn) /= 'OK' then do
+    zedsmsg = null
+    zedlmsg = 'Error.' inewsdsn sysdsn(inewsdsn)
+   'setmsg msg(isrz001)'
+   return 8
+   end
+ if left(inewsdsn,1) = "'" then do
+    wdsn = substr(inewsdsn,2,length(inewsdsn)-2)
+    end
+ else do
+      if sysvar('syspref') = null then hlq = sysvar('sysuid')
+                                else hlq = sysvar('syspref')
+      wdsn = hlq'.'inewsdsn
+      end
+
+ if string = null then do
+    zedsmsg = 'Error'
+    zedlmsg = 'No string provided for the search. Search ending.'
+    'Setmsg msg(isrz001)'
+    return 8
+    end
+
+ Address ISPExec
+ 'vget (zscreen) shared'
+ Address TSO
+ 'alloc f(sysin) unit(vio) new reuse space(1,1) tracks',
+   'lrecl(80) recfm(f b) blksize(0) dsorg(ps)'
+ if pos("'",string) > 0 then
+   push "SRCHFOR "string
+ else
+   push "SRCHFOR '"string"'"
+ queue ""
+ 'execio * diskw sysin (finis'
+ 'delstack'
+ "alloc f(newdd) da('"wdsn"') shr reuse"
+ 'alloc f(outdd) new reuse unit(sysallda)',
+   'space(15,15) tracks recfm(f b a) lrecl(132) blksize(0) dsorg(ps)'
+ parm = 'SRCHCMP,ANYC,NOPRTCC'
+ Address LINKMVS 'ISRSUPC parm'
+ 'execio * diskr outdd (stem pds. finis'
+ Address TSO
+ 'alloc f(sysin) da(*) shr reuse'
+ 'free  f(newdd outdd)'
+
+ do fi = 1 to pds.0
+    if pos('STRING(S) FOUND',pds.fi) = 0 then iterate
+    mem = word(pds.fi,1)
+    if left(mem,1) /= 'N' then iterate
+    inewmems = inewmems mem
+    end
+ Address ISPexec 'vput (inewmems) shared'
+ Return 0
