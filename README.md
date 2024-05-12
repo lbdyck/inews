@@ -150,7 +150,6 @@ for menu options:
 What this will do is the following:
 
 1. Each time the panel is called a check will be made for ZSCREEN 1 and
-   variable ZNEWSPAN and if it is DONE then that processing will be
-   skipped.
+   variable ZNEWSPAN and if it is DONE then that processing will be skipped.
 2. If not DONE then setup the option to be NF to invoke the %INEWSCK
    exec to check for new and unread news items.
